@@ -70,10 +70,12 @@
     "clean": "rm -rf dist *.node",
     "postinstall": "npm run build:ts"
   },
+  "dependencies": {
+    "@stellar/stellar-sdk": "14.1.0"
+  },
   "devDependencies": {
     "@emnapi/core": "^1.4.5",
     "@emnapi/runtime": "^1.4.5",
-    "@mysten/sui": "^1.31.0",
     "@napi-rs/cli": "^3.0.3",
     "@oxc-node/core": "^0.0.32",
     "@taplo/cli": "^0.7.0",

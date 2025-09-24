@@ -1,1 +1,1 @@
-export * from '@redstone-finance/suiangria-wasm32-wasi';
+export * from '@redstone-finance/mars-rover-wasm32-wasi';
