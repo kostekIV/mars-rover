@@ -1,4 +1,3 @@
-
 [package]
 authors = ["RedStone Team <dev@redstone.finance>"]
 edition = "2021"
@@ -19,11 +18,12 @@ napi-derive = "3.2.5"
 anyhow             = { version = "1.0.100" }
 serde              = { version = "1.0", features = ["derive"] }
 serde_json         = "1.0.145"
+serde_with         = "3.14.1"
 sha2               = "0.10"
 soroban-env-common = { version = "23.0.1", features = ["std", "serde"] }
-soroban-env-host   = { version = "23.0.1", features = ["testutils", "backtrace"] }
+soroban-env-host   = { version = "23.0.1", features = ["testutils"] }
+soroban-simulation = { version = "23.0.1", features = ["testutils"] }
 soroban-test-wasms = { git = "https://github.com/stellar/rs-soroban-env/" }
-serde_with = "3.14.1"
 
 
 [build-dependencies]

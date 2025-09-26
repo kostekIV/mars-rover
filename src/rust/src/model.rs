@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use soroban_env_host::xdr::{DiagnosticEvent, LedgerEntry, LedgerKey, ScVal, SorobanAuthorizationEntry, SorobanTransactionData};
+use soroban_env_host::xdr::{
+    DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerKey, ScVal,
+    SorobanAuthorizationEntry, SorobanTransactionData,
+};
 
-#[derive(  Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum SimulateTransactionResponse {
     Success(SimulateTransactionSuccessResponse),
@@ -10,7 +13,7 @@ pub enum SimulateTransactionResponse {
 }
 
 #[serde_as]
-#[derive(  Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SimulateTransactionSuccessResponse {
     pub id: String,
@@ -18,7 +21,7 @@ pub struct SimulateTransactionSuccessResponse {
     pub events: Vec<DiagnosticEvent>,
     #[serde(rename = "_parsed")]
     pub parsed: bool,
-    pub transaction_data: SorobanTransactionData,
+    pub transaction_data: String,
     pub min_resource_fee: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<SimulateHostFunctionResult>,
@@ -26,7 +29,7 @@ pub struct SimulateTransactionSuccessResponse {
     pub state_changes: Option<Vec<LedgerEntryChange>>,
 }
 
-#[derive(  Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SimulateTransactionErrorResponse {
     pub id: String,
@@ -41,7 +44,7 @@ pub struct SimulateTransactionErrorResponse {
 #[serde(rename_all = "camelCase")]
 pub struct LedgerEntryChange {
     #[serde(rename = "type")]
-    pub change_type: u32,
+    pub change_type: LedgerEntryChangeType,
     pub key: LedgerKey,
     pub before: Option<LedgerEntry>,
     pub after: Option<LedgerEntry>,
@@ -49,6 +52,6 @@ pub struct LedgerEntryChange {
 
 #[derive(Serialize, Deserialize)]
 pub struct SimulateHostFunctionResult {
-    pub auth: Vec<SorobanAuthorizationEntry>,
+    pub auth: Vec<String>,
     pub retval: ScVal,
 }

@@ -5,10 +5,9 @@ use soroban_env_host::xdr::ContractCostParams;
 use soroban_env_host::{CompilationContext, ErrorHandler, HostError, ModuleCache};
 
 pub fn new_module_cache() -> anyhow::Result<(ModuleCache, CoreCompilationContext)> {
-    let ctx = CoreCompilationContext::new().map_err(|e| anyhow!("error creating module cache: {}", e))?;
-    let cache = ModuleCache::new(
-        &ctx,
-    )?;
+    let ctx =
+        CoreCompilationContext::new().map_err(|e| anyhow!("error creating module cache: {}", e))?;
+    let cache = ModuleCache::new(&ctx)?;
 
     Ok((cache, ctx))
 }

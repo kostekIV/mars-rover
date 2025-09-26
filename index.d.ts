@@ -7,7 +7,7 @@ export declare class MarsRover {
   getBalance(account: string): number;
   deployCode(accountId: string, code: Array<number>): string;
   simulateTx(transactionEnvelope: string): string;
-  sendTransaction(transactionEnvelope: string): string;
+  sendTransaction(transactionEnvelope: string): Array<number>;
   networkPassphrase(): string;
   getNetworkInfo(): string;
 }
