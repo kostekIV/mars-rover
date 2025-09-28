@@ -1,6 +1,5 @@
 use sha2::{Digest, Sha256};
-use soroban_env_host::e2e_testutils::default_ledger_info;
-use soroban_env_host::LedgerInfo;
+use soroban_env_host::{e2e_testutils::default_ledger_info, LedgerInfo};
 
 pub const NETWORK_PASSPHRASE: &str = "mars-rover; sandbox environment";
 

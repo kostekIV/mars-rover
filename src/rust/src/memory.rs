@@ -1,15 +1,18 @@
-use soroban_env_host::storage::{EntryWithLiveUntil, SnapshotSource};
-use soroban_env_host::xdr::{LedgerEntry, LedgerKey, Limits, WriteXdr};
-use soroban_env_host::HostError;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::rc::Rc;
+use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
+
+use anyhow::{anyhow, Result};
+use napi::Error;
+use soroban_env_common::xdr::LedgerEntryData;
+use soroban_env_host::{
+    storage::{EntryWithLiveUntil, SnapshotSource},
+    xdr::{AccountEntry, LedgerEntry, LedgerKey},
+    HostError,
+};
 
 #[derive(Default, Clone)]
 pub struct Memory {
     memory: RefCell<BTreeMap<Rc<LedgerKey>, (Rc<LedgerEntry>, Option<u32>)>>,
 }
-use std::fmt;
 
 impl fmt::Debug for Memory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -45,20 +48,30 @@ impl Memory {
     }
 
     pub fn remove(&self, key: &Rc<LedgerKey>) {
-        let entry = self.memory.borrow_mut().remove(key);
+        self.memory.borrow_mut().remove(key);
+    }
+
+    pub fn get_account(&self, key: Rc<LedgerKey>) -> Result<Option<AccountEntry>> {
+        let entry = self
+            .get(&key)
+            .map_err(|e| Error::from_reason(format!("memory access error: {:?}", e)))?;
+
+        let entry = match entry {
+            Some((entry, _)) => entry,
+            _ => return Ok(None),
+        };
+
+        match &entry.data {
+            LedgerEntryData::Account(account_entry) => Ok(Some(account_entry.clone())),
+            _ => Err(anyhow!("account not found")),
+        }
     }
 }
 
 impl SnapshotSource for Memory {
     fn get(&self, key: &Rc<LedgerKey>) -> Result<Option<EntryWithLiveUntil>, HostError> {
-       // println!("get {:?}", key);
         let entry = self.memory.borrow().get(key).cloned();
-        // println!(
-        //     "return {:?}",
-        //     entry
-        //         .as_ref()
-        //         .map(|(x, y)| x.data.to_xdr_base64(Limits::none()))
-        // );
+
         Ok(entry)
     }
 }

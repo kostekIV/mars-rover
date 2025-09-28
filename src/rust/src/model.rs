@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use soroban_env_host::xdr::{
-    DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerKey, ScVal,
-    SorobanAuthorizationEntry, SorobanTransactionData,
+    DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerEntryData, LedgerKey, ScVal,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -54,4 +53,49 @@ pub struct LedgerEntryChange {
 pub struct SimulateHostFunctionResult {
     pub auth: Vec<String>,
     pub retval: ScVal,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerEntryResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified_ledger_seq: Option<u32>,
+    pub key: LedgerKey,
+    pub data: LedgerEntryData,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_until_ledger_seq: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct LedgerInfo {
+    pub protocol_version: u32,
+    pub sequence_number: u32,
+    pub timestamp: u64,
+    pub network_id: [u8; 32],
+    pub base_reserve: u32,
+    pub min_temp_entry_ttl: u32,
+    pub min_persistent_entry_ttl: u32,
+    pub max_entry_ttl: u32,
+}
+
+impl From<soroban_env_host::LedgerInfo> for LedgerInfo {
+    fn from(value: soroban_env_host::LedgerInfo) -> Self {
+        Self {
+            protocol_version: value.protocol_version,
+            sequence_number: value.sequence_number,
+            timestamp: value.timestamp,
+            network_id: value.network_id,
+            base_reserve: value.base_reserve,
+            min_temp_entry_ttl: value.min_temp_entry_ttl,
+            min_persistent_entry_ttl: value.min_persistent_entry_ttl,
+            max_entry_ttl: value.max_entry_ttl,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Durability {
+    Temporary,
+    Persistent,
 }

@@ -1,8 +1,10 @@
 use anyhow::anyhow;
 use soroban_env_common::Val;
-use soroban_env_host::budget::{AsBudget, Budget};
-use soroban_env_host::xdr::ContractCostParams;
-use soroban_env_host::{CompilationContext, ErrorHandler, HostError, ModuleCache};
+use soroban_env_host::{
+    budget::{AsBudget, Budget},
+    xdr::ContractCostParams,
+    CompilationContext, ErrorHandler, HostError, ModuleCache,
+};
 
 pub fn new_module_cache() -> anyhow::Result<(ModuleCache, CoreCompilationContext)> {
     let ctx =
@@ -47,15 +49,11 @@ impl ErrorHandler for CoreCompilationContext {
     {
         match res {
             Ok(t) => Ok(t),
-            Err(e) => {
-                eprintln!("compiling module: {:?}", e);
-                Err(HostError::from(e))
-            }
+            Err(e) => Err(HostError::from(e)),
         }
     }
 
     fn error(&self, error: soroban_env_host::Error, msg: &str, _args: &[Val]) -> HostError {
-        eprintln!("compiling module: {:?}: {}", error, msg);
         HostError::from(error)
     }
 }

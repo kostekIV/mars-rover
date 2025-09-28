@@ -2,12 +2,15 @@
 /* eslint-disable */
 export declare class MarsRover {
   constructor();
+  setTime(time: number): void;
+  setSequence(seq: number): void;
+  getLedgerInfo(): string;
   fundAccount(account: string, balance: number): void;
   getAccount(account: string): string;
-  getBalance(account: string): number;
-  deployCode(accountId: string, code: Array<number>): string;
+  getBalance(account: string): string;
   simulateTx(transactionEnvelope: string): string;
   sendTransaction(transactionEnvelope: string): Array<number>;
   networkPassphrase(): string;
   getNetworkInfo(): string;
+  getContractData(contractAddress: string, key: string, durability: string): string;
 }
