@@ -78,6 +78,7 @@
     "@emnapi/runtime": "^1.4.5",
     "@napi-rs/cli": "^3.0.3",
     "@oxc-node/core": "^0.0.32",
+    "@stellar/stellar-sdk": "14.1.0",
     "@taplo/cli": "^0.7.0",
     "@tybys/wasm-util": "^0.10.0",
     "@types/jest": "^30.0.0",
@@ -94,8 +95,7 @@
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
-    "zod": "^4.0.17",
-    "@stellar/stellar-sdk": "14.1.0"
+    "zod": "^4.0.17"
   },
   "lint-staged": {
     "*.@(js|ts|tsx)": [
