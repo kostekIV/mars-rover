@@ -1,7 +1,5 @@
 # MarsRover
 
-![MarsRover Logo](assets/logo.png)
-
 ⚠️ **Early Development Notice**: This project is under active development. Many features are incomplete or may not work as expected. Use at your own risk.
 
 A Stellar blockchain sandbox for smart contract testing built with Rust and NAPI-RS bindings. Provides a Soroban simulation environment with TypeScript integration via an overridden Server class from the Stellar SDK.
