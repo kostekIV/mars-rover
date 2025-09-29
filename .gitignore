@@ -134,3 +134,4 @@ Cargo.lock
 /npm
 
 **/.DS_Store
+.idea
