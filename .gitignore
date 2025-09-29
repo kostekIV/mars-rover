@@ -121,6 +121,7 @@ dist
 Cargo.lock
 
 *.node
+!mars-rover.darwin-arm64.node
 !./npm-packages/**.node
 
 .pnp.*
