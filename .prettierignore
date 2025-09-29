@@ -1,9 +1,8 @@
 target
 .yarn
 index.js
-suiangria.wasi-browser.js
-suiangria.wasi.cjs
+mars-rover.wasi-browser.js
+mars-rover.wasi.cjs
 wasi-worker-browser.mjs
 wasi-worker.mjs
 .yarnrc.yml
-move-fixtures

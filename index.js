@@ -508,4 +508,4 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
-module.exports.StellarSandbox = nativeBinding.StellarSandbox
+module.exports.MarsRover = nativeBinding.MarsRover
