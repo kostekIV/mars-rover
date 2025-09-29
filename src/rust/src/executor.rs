@@ -54,7 +54,7 @@ impl Executor {
             _ => return Err(anyhow::anyhow!("Expected InvokeHostFunction operation")),
         };
 
-        let network_config = default_network_config();
+        let network_config = default_network_config()?;
         let simulation = simulate_invoke_host_function_op(
             self.memory.clone(),
             &network_config,
