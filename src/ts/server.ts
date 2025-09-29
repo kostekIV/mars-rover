@@ -73,7 +73,12 @@ export class SandboxServer extends rpc.Server {
       durability,
     );
 
-    return await Promise.resolve(JSON.parse(responseJson));
+    const response = JSON.parse(responseJson);
+
+    response.key = xdr.LedgerKey.fromXDR(response.key, 'base64');
+    response.val = xdr.LedgerEntryData.fromXDR(response.val, 'base64');
+
+    return await Promise.resolve(response);
   }
 
   override sendTransaction(
