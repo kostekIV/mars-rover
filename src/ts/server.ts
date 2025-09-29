@@ -7,6 +7,7 @@ import {
   Transaction,
   xdr,
   rpc,
+  Keypair,
 } from '@stellar/stellar-sdk';
 import { SorobanDataBuilder } from '@stellar/stellar-base';
 
@@ -16,8 +17,10 @@ export class SandboxServer extends rpc.Server {
   }
 
   override getAccount(address: string): Promise<Account> {
+    const accountBs64 = Keypair.fromPublicKey(address).xdrPublicKey().toXDR('base64');
+
     const accountData: { account_id: string; seq_num: string } = JSON.parse(
-      this.sandbox.getAccount(address),
+      this.sandbox.getAccount(accountBs64),
     );
 
     return Promise.resolve(new Account(accountData.account_id, accountData.seq_num));

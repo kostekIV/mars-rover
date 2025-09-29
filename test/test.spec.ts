@@ -29,7 +29,7 @@ describe('MarsRover Stellar Sandbox', () => {
   };
 
   const buildTransaction = async (operation: xdr.Operation, sourceKeypair: Keypair) => {
-    const account = await server.getAccount(sourceKeypair.xdrPublicKey().toXDR('base64'));
+    const account = await server.getAccount(sourceKeypair.publicKey());
     const networkInfo = await server.getNetwork();
 
     const transaction = new TransactionBuilder(account, {
@@ -97,7 +97,7 @@ describe('MarsRover Stellar Sandbox', () => {
 
     it('should fund account and retrieve account details', async () => {
       const keypair = createFundedAccount(1000);
-      const account = await server.getAccount(keypair.xdrPublicKey().toXDR('base64'));
+      const account = await server.getAccount(keypair.publicKey());
 
       expect(account.accountId()).toBe(keypair.publicKey());
       expect(account.sequenceNumber()).toBe('0');
@@ -264,7 +264,7 @@ describe('MarsRover Stellar Sandbox', () => {
     });
 
     it('should handle requests for non-existent accounts', async () => {
-      const randomKey = Keypair.random().xdrPublicKey().toXDR('base64');
+      const randomKey = Keypair.random().publicKey();
 
       await expect(async () => {
         await server.getAccount(randomKey);
