@@ -2,30 +2,35 @@ use std::rc::Rc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use napi::Error;
-use napi_derive::napi;
 use soroban_env_common::xdr::{
-    AccountEntry, AccountEntryExt, AccountId, ContractId, LedgerEntry, LedgerEntryData, LedgerKey,
-    LedgerKeyAccount, Limits, ReadXdr, SequenceNumber, String32, Thresholds, TransactionEnvelope,
-    TransactionV1Envelope,
+    AccountEntry, AccountEntryExt, AccountId, LedgerEntry, LedgerEntryData, LedgerKey,
+    LedgerKeyAccount, Limits, OperationResultTr, ReadXdr, SequenceNumber, String32, Thresholds,
+    TransactionEnvelope, TransactionResultResult, TransactionV1Envelope,
 };
 use soroban_env_host::{
     e2e_testutils::ledger_entry,
     storage::SnapshotSource,
-    xdr::{ContractDataDurability, LedgerKeyContractData, ScAddress, ScVal},
+    xdr::{
+        ContractDataDurability, Hash, InvokeHostFunctionResult, LedgerKeyContractData,
+        OperationResult, ScAddress, ScVal, TransactionResult, WriteXdr,
+    },
     LedgerInfo,
 };
 
 use crate::{
-    executor::Executor,
+    executor::{ExecutionResult, Executor},
     ledger_info::{get_initial_ledger_info, NETWORK_PASSPHRASE},
     memory::Memory,
-    model::LedgerEntryResult,
+    model::{
+        BaseSendTransactionResponse, GetFailedTransactionResponse, GetMissingTransactionResponse,
+        GetSuccessfulTransactionResponse, GetTransactionResponse, LedgerEntryResult,
+        SendTransactionResponse, SendTransactionStatus, TransactionEvents,
+    },
     tx_storage::{TransactionInfo, TxStorage},
-    utils::tx_hash,
+    utils::{failed_result, tx_hash},
     validation::TxValidation,
     NetworkInfo,
 };
-use crate::model::Durability;
 
 pub struct Sandbox {
     memory: Rc<Memory>,
@@ -155,7 +160,10 @@ impl Sandbox {
             .map_err(|e| Error::from_reason(format!("network info serialization failed: {}", e)))
     }
 
-    pub fn send_transaction(&mut self, transaction_envelope: String) -> Result<Result<Vec<u8>>> {
+    pub fn send_transaction(
+        &mut self,
+        transaction_envelope: String,
+    ) -> Result<SendTransactionResponse> {
         let te = TransactionEnvelope::from_xdr_base64(&transaction_envelope, Limits::none())
             .map_err(|e| Error::from_reason(format!("invalid transaction envelope: {}", e)))?;
 
@@ -189,32 +197,49 @@ impl Sandbox {
             },
         };
 
-        let result = result.map_err(|e| e.to_string());
+        let status = match &result.result {
+            Ok(_) => SendTransactionStatus::Pending,
+            _ => SendTransactionStatus::Error,
+        };
+
+        let response = SendTransactionResponse {
+            base: BaseSendTransactionResponse {
+                status,
+                hash: hash.clone(),
+                latest_ledger: self.ledger_info.sequence_number,
+                latest_ledger_close_time: self.ledger_info.timestamp,
+            },
+            error_result: result.error.clone().map(|error| TransactionResult {
+                fee_charged: result.fee_charges,
+                result: error,
+                ext: Default::default(),
+            }),
+            diagnostic_events: result.error.is_some().then_some(result.events.clone()),
+        };
 
         self.tx_storage.insert(
             hash,
             TransactionInfo {
                 envelope,
-                result: result.clone(),
-                events: vec![],
+                result: result.result.map_err(|e| e.to_string()),
+                events: result.events,
                 ledger_info: self.ledger_info.clone(),
             },
         );
 
-        Ok(result.map_err(|e| anyhow!(e)))
+        Ok(response)
     }
 
     pub fn send_transaction_inner(
         &self,
         envelope: &TransactionV1Envelope,
-    ) -> Result<Result<Vec<u8>>> {
+    ) -> Result<ExecutionResult> {
         self.validator.validate(envelope, &self.ledger_info)?;
 
         let result = self
             .executor
             .send_transaction(envelope, &self.ledger_info)
-            .map_err(|e| anyhow!("transaction execution failed: {:?}", e))?
-            .map_err(|e| anyhow!("transaction error: {:?}", e));
+            .map_err(|e| anyhow!("transaction execution failed: {:?}", e))?;
 
         Ok(result)
     }
@@ -227,8 +252,7 @@ impl Sandbox {
     ) -> Result<LedgerEntryResult> {
         let contract = ScAddress::from_xdr_base64(contract_address, Limits::none())
             .context("Invalid contract address XDR")?;
-        let key = ScVal::from_xdr_base64(key, Limits::none())
-            .context("Invalid key XDR")?;
+        let key = ScVal::from_xdr_base64(key, Limits::none()).context("Invalid key XDR")?;
 
         let durability = match durability.as_str() {
             "persistent" => ContractDataDurability::Persistent,
@@ -252,5 +276,99 @@ impl Sandbox {
             data: entry.data.clone(),
             live_until_ledger_seq: ttl,
         })
+    }
+
+    pub fn get_transaction(&self, hash: String) -> Result<GetTransactionResponse> {
+        let ti = match self.tx_storage.get(&hash) {
+            Some(ti) => ti,
+            None => {
+                return Ok(GetTransactionResponse::NotFound(
+                    GetMissingTransactionResponse {
+                        tx_hash: hash,
+                        latest_ledger: self.ledger_info.sequence_number,
+                        latest_ledger_close_time: self.ledger_info.timestamp,
+                        oldest_ledger: 0,
+                        oldest_ledger_close_time: 0,
+                    },
+                ))
+            },
+        };
+
+        match &ti.result {
+            Ok(result) => Ok(GetTransactionResponse::Success(
+                GetSuccessfulTransactionResponse {
+                    tx_hash: hash.clone(),
+                    latest_ledger: self.ledger_info.sequence_number,
+                    latest_ledger_close_time: self.ledger_info.timestamp,
+                    oldest_ledger: 0,
+                    oldest_ledger_close_time: 0,
+                    ledger: ti.ledger_info.sequence_number,
+                    created_at: ti.ledger_info.timestamp,
+                    application_order: 0,
+                    fee_bump: false,
+                    envelope_xdr: TransactionEnvelope::Tx(ti.envelope.clone())
+                        .to_xdr_base64(Limits::none())?,
+                    result_xdr: TransactionResult {
+                        fee_charged: ti.envelope.tx.fee as i64,
+                        result: TransactionResultResult::TxSuccess(
+                            vec![OperationResult::OpInner(
+                                OperationResultTr::InvokeHostFunction(
+                                    InvokeHostFunctionResult::Success(Hash(
+                                        hex::decode(hash)?
+                                            .try_into()
+                                            .map_err(|e| anyhow!("coudl not decode {e:?}"))?,
+                                    )),
+                                ),
+                            )]
+                            .try_into()?,
+                        ),
+                        ext: Default::default(),
+                    }
+                    .to_xdr_base64(Limits::none())?,
+                    result_meta_xdr: Default::default(),
+                    diagnostic_events_xdr: None,
+                    return_value: Some(result.clone()),
+                    events: TransactionEvents {
+                        transaction_events_xdr: vec![],
+                        contract_events_xdr: vec![ti
+                            .events
+                            .iter()
+                            .map(|e| e.event.clone())
+                            .collect()],
+                    },
+                },
+            )),
+            Err(_) => Ok(GetTransactionResponse::Failed(
+                GetFailedTransactionResponse {
+                    tx_hash: hash.clone(),
+                    latest_ledger: self.ledger_info.sequence_number,
+                    latest_ledger_close_time: self.ledger_info.timestamp,
+                    oldest_ledger: 0,
+                    oldest_ledger_close_time: 0,
+                    ledger: ti.ledger_info.sequence_number,
+                    created_at: ti.ledger_info.timestamp,
+                    application_order: 0,
+                    fee_bump: false,
+                    envelope_xdr: TransactionEnvelope::Tx(ti.envelope.clone())
+                        .to_xdr_base64(Limits::none())?,
+                    result_xdr: TransactionResult {
+                        fee_charged: ti.envelope.tx.fee as i64,
+                        result: failed_result()?,
+                        ext: Default::default(),
+                    }
+                    .to_xdr_base64(Limits::none())?,
+                    result_meta_xdr: Default::default(),
+                    diagnostic_events_xdr: None,
+                    events: TransactionEvents {
+                        transaction_events_xdr: vec![],
+                        contract_events_xdr: vec![ti
+                            .events
+                            .iter()
+                            .map(|e| e.event.clone())
+                            .collect()],
+                    },
+                },
+            )),
+        }
     }
 }

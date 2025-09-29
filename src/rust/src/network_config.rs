@@ -15,7 +15,7 @@ use soroban_simulation::NetworkConfig;
 
 use crate::{ledger_info::get_initial_ledger_info, memory::Memory};
 
-fn config_entry(entry: ConfigSettingEntry) -> (LedgerEntry, Option<u32>) {
+fn _config_entry(entry: ConfigSettingEntry) -> (LedgerEntry, Option<u32>) {
     (ledger_entry(LedgerEntryData::ConfigSetting(entry)), None)
 }
 pub fn default_network_config() -> NetworkConfig {
@@ -63,7 +63,7 @@ pub fn default_network_config() -> NetworkConfig {
     }
 }
 
-pub fn populate_memory_with_config_entries(memory: Rc<Memory>) {
+pub fn _populate_memory_with_config_entries(memory: Rc<Memory>) {
     let cpu_cost_params = ContractCostParams(
         vec![
             ContractCostParamEntry {
@@ -102,7 +102,7 @@ pub fn populate_memory_with_config_entries(memory: Rc<Memory>) {
         .unwrap(),
     );
     let entries = vec![
-        config_entry(ConfigSettingEntry::ContractComputeV0(
+        _config_entry(ConfigSettingEntry::ContractComputeV0(
             ConfigSettingContractComputeV0 {
                 ledger_max_instructions: 1,
                 tx_max_instructions: 2,
@@ -110,7 +110,7 @@ pub fn populate_memory_with_config_entries(memory: Rc<Memory>) {
                 tx_memory_limit: 4,
             },
         )),
-        config_entry(ConfigSettingEntry::ContractLedgerCostV0(
+        _config_entry(ConfigSettingEntry::ContractLedgerCostV0(
             ConfigSettingContractLedgerCostV0 {
                 ledger_max_disk_read_entries: 5,
                 ledger_max_disk_read_bytes: 6,
@@ -130,31 +130,31 @@ pub fn populate_memory_with_config_entries(memory: Rc<Memory>) {
                 soroban_state_rent_fee_growth_factor: 50,
             },
         )),
-        config_entry(ConfigSettingEntry::ContractLedgerCostExtV0(
+        _config_entry(ConfigSettingEntry::ContractLedgerCostExtV0(
             ConfigSettingContractLedgerCostExtV0 {
                 tx_max_footprint_entries: 16,
                 fee_write1_kb: 17,
             },
         )),
-        config_entry(ConfigSettingEntry::ContractHistoricalDataV0(
+        _config_entry(ConfigSettingEntry::ContractHistoricalDataV0(
             ConfigSettingContractHistoricalDataV0 {
                 fee_historical1_kb: 20,
             },
         )),
-        config_entry(ConfigSettingEntry::ContractEventsV0(
+        _config_entry(ConfigSettingEntry::ContractEventsV0(
             ConfigSettingContractEventsV0 {
                 tx_max_contract_events_size_bytes: 21,
                 fee_contract_events1_kb: 22,
             },
         )),
-        config_entry(ConfigSettingEntry::ContractBandwidthV0(
+        _config_entry(ConfigSettingEntry::ContractBandwidthV0(
             ConfigSettingContractBandwidthV0 {
                 ledger_max_txs_size_bytes: 23,
                 tx_max_size_bytes: 24,
                 fee_tx_size1_kb: 25,
             },
         )),
-        config_entry(ConfigSettingEntry::StateArchival(StateArchivalSettings {
+        _config_entry(ConfigSettingEntry::StateArchival(StateArchivalSettings {
             max_entry_ttl: 26,
             min_temporary_ttl: 27,
             min_persistent_ttl: 28,
@@ -166,10 +166,10 @@ pub fn populate_memory_with_config_entries(memory: Rc<Memory>) {
             eviction_scan_size: 34,
             starting_eviction_scan_level: 35,
         })),
-        config_entry(ConfigSettingEntry::ContractCostParamsCpuInstructions(
+        _config_entry(ConfigSettingEntry::ContractCostParamsCpuInstructions(
             cpu_cost_params.clone(),
         )),
-        config_entry(ConfigSettingEntry::ContractCostParamsMemoryBytes(
+        _config_entry(ConfigSettingEntry::ContractCostParamsMemoryBytes(
             memory_cost_params.clone(),
         )),
     ];

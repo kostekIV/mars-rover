@@ -1,7 +1,6 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde::Serialize;
-use soroban_env_host::LedgerInfo;
 
 use crate::{ledger_info::NETWORK_PASSPHRASE, sandbox::Sandbox};
 
@@ -26,6 +25,12 @@ struct NetworkInfo {
 #[napi]
 pub struct MarsRover {
     sandbox: Sandbox,
+}
+
+impl Default for MarsRover {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[napi]
@@ -84,11 +89,13 @@ impl MarsRover {
     }
 
     #[napi]
-    pub fn send_transaction(&mut self, transaction_envelope: String) -> Result<Result<Vec<u8>>> {
-        self.sandbox
+    pub fn send_transaction(&mut self, transaction_envelope: String) -> Result<String> {
+        let res = self
+            .sandbox
             .send_transaction(transaction_envelope)
-            .map_err(|e| Error::from_reason(e.to_string()))
-            .map(|res| res.map_err(|e| Error::from_reason(e.to_string())))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        serde_json::to_string(&res).map_err(|err| Error::from_reason(err.to_string()))
     }
 
     #[napi]
@@ -113,6 +120,16 @@ impl MarsRover {
         let response = self
             .sandbox
             .get_contract_data(contract_address, key, durability)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        serde_json::to_string(&response).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    #[napi]
+    pub fn get_transaction(&self, hash: String) -> Result<String> {
+        let response = self
+            .sandbox
+            .get_transaction(hash)
             .map_err(|e| Error::from_reason(e.to_string()))?;
 
         serde_json::to_string(&response).map_err(|e| Error::from_reason(e.to_string()))

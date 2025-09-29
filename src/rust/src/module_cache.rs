@@ -53,7 +53,7 @@ impl ErrorHandler for CoreCompilationContext {
         }
     }
 
-    fn error(&self, error: soroban_env_host::Error, msg: &str, _args: &[Val]) -> HostError {
+    fn error(&self, error: soroban_env_host::Error, _msg: &str, _args: &[Val]) -> HostError {
         HostError::from(error)
     }
 }

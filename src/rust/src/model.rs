@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use soroban_env_common::xdr::{TransactionEvent, TransactionResult};
 use soroban_env_host::xdr::{
-    DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerEntryData, LedgerKey, ScVal,
+    ContractEvent, DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerEntryData, LedgerKey,
+    ScVal,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -98,4 +100,110 @@ impl From<soroban_env_host::LedgerInfo> for LedgerInfo {
 pub enum Durability {
     Temporary,
     Persistent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SendTransactionStatus {
+    Pending,
+    Duplicate,
+    TryAgainLater,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseSendTransactionResponse {
+    pub status: SendTransactionStatus,
+    pub hash: String,
+    pub latest_ledger: u32,
+    pub latest_ledger_close_time: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendTransactionResponse {
+    #[serde(flatten)]
+    pub base: BaseSendTransactionResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_result: Option<TransactionResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic_events: Option<Vec<DiagnosticEvent>>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GetTransactionStatus {
+    Success,
+    NotFound,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMissingTransactionResponse {
+    pub tx_hash: String,
+    pub latest_ledger: u32,
+    pub latest_ledger_close_time: u64,
+    pub oldest_ledger: u32,
+    pub oldest_ledger_close_time: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFailedTransactionResponse {
+    pub tx_hash: String,
+    pub latest_ledger: u32,
+    pub latest_ledger_close_time: u64,
+    pub oldest_ledger: u32,
+    pub oldest_ledger_close_time: u64,
+    pub ledger: u32,
+    pub created_at: u64,
+    pub application_order: u32,
+    pub fee_bump: bool,
+    pub envelope_xdr: String,
+    pub result_xdr: String,
+    pub result_meta_xdr: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic_events_xdr: Option<Vec<DiagnosticEvent>>,
+    pub events: TransactionEvents,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSuccessfulTransactionResponse {
+    pub tx_hash: String,
+    pub latest_ledger: u32,
+    pub latest_ledger_close_time: u64,
+    pub oldest_ledger: u32,
+    pub oldest_ledger_close_time: u64,
+    pub ledger: u32,
+    pub created_at: u64,
+    pub application_order: u32,
+    pub fee_bump: bool,
+    pub envelope_xdr: String,
+    pub result_xdr: String,
+    pub result_meta_xdr: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic_events_xdr: Option<Vec<DiagnosticEvent>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub return_value: Option<Vec<u8>>,
+    pub events: TransactionEvents,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum GetTransactionResponse {
+    #[serde(rename = "NOT_FOUND")]
+    NotFound(GetMissingTransactionResponse),
+    #[serde(rename = "FAILED")]
+    Failed(GetFailedTransactionResponse),
+    #[serde(rename = "SUCCESS")]
+    Success(GetSuccessfulTransactionResponse),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionEvents {
+    pub transaction_events_xdr: Vec<TransactionEvent>,
+    pub contract_events_xdr: Vec<Vec<ContractEvent>>,
 }

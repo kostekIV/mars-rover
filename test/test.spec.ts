@@ -1,95 +1,106 @@
-import { MarsRover } from '../index';
-import { Account, Address, Contract, Keypair, Operation, Transaction, xdr } from '@stellar/stellar-sdk';
+import {
+  Address,
+  Contract,
+  Keypair,
+  Operation,
+  TransactionBuilder,
+  xdr,
+} from '@stellar/stellar-sdk';
 import { readFileSync } from 'fs';
-import { StellarRpcClient } from './utils';
-import { SorobanDataBuilder } from '@stellar/stellar-base';
+import { getLedgerInfo, makeSandbox } from '../src/ts';
 
 describe('MarsRover Stellar Sandbox', () => {
-  let rover: MarsRover;
-  let rpc: StellarRpcClient;
+  let sandbox: ReturnType<typeof makeSandbox>;
+  let server: ReturnType<typeof makeSandbox>['server'];
+  let marsRover: ReturnType<typeof makeSandbox>['marsRover'];
 
   beforeEach(() => {
-    rover = new MarsRover();
-    rpc = new StellarRpcClient();
+    sandbox = makeSandbox();
+    server = sandbox.server;
+    marsRover = sandbox.marsRover;
   });
 
-  const createFundedAccount = (balance: number = 1_000_000_000): { keypair: Keypair; accountKey: string } => {
+  const createFundedAccount = (balance: number = 1_000_000_000): Keypair => {
     const keypair = Keypair.random();
     const accountKey = keypair.xdrPublicKey().toXDR('base64');
-    rover.fundAccount(accountKey, balance);
-    return { keypair, accountKey };
+    marsRover.fundAccount(accountKey, balance);
+
+    return keypair;
   };
 
-  const getAccountProvider = (accountKey: string) => () => {
-    const accountData: { account_id: string; seq_num: string } = JSON.parse(rover.getAccount(accountKey));
-    return new Account(accountData.account_id, accountData.seq_num);
+  const buildTransaction = async (operation: xdr.Operation, sourceKeypair: Keypair) => {
+    const account = await server.getAccount(sourceKeypair.xdrPublicKey().toXDR('base64'));
+    const networkInfo = await server.getNetwork();
+
+    const transaction = new TransactionBuilder(account, {
+      fee: '1000000',
+      networkPassphrase: networkInfo.passphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(30)
+      .build();
+
+    return await server.prepareTransaction(transaction);
   };
 
-  const simulateTransaction = (tx: Transaction) => {
-    const simulation = JSON.parse(rover.simulateTx(tx.toEnvelope().toXDR('base64')));
+  const executeTransaction = async (transaction: any, signerKeypair: Keypair) => {
+    transaction.sign(signerKeypair);
+    const sendResponse = await server.sendTransaction(transaction);
 
-    if ('error' in simulation) {
-      return simulation;
+    const txResult = await server.getTransaction(sendResponse.hash);
+
+    if (txResult.status === 'SUCCESS') {
+      return txResult.returnValue!;
     }
 
-    simulation.transactionData = new SorobanDataBuilder(
-      xdr.SorobanTransactionData.fromXDR(simulation.transactionData, 'base64'),
-    );
-
-    simulation.result.auth = simulation.result.auth.map((authEntry: string) =>
-      xdr.SorobanAuthorizationEntry.fromXDR(authEntry, 'base64'),
-    );
-
-    return simulation;
-  };
-
-  const executeTransaction = (tx: Transaction, signerKeypair: Keypair): Buffer => {
-    tx.sign(signerKeypair);
-    const result = rover.sendTransaction(tx.toEnvelope().toXDR('base64'));
-    return Buffer.from(result);
-  };
-
-  const decodeScVal = (buffer: Buffer): xdr.ScVal => {
-    return xdr.ScVal.fromXDR(buffer);
+    throw new Error(`Transaction failed with status: ${txResult.status}`);
   };
 
   describe('Basic Operations', () => {
-    it('should handle transaction without funded account (expect failure)', () => {
+    it('should handle transaction without funded account (expect failure)', async () => {
       const invalidTxXdr =
         'AAAAAgAAAADMhyUr2DTDvFw70TSRmUhm52A7PuMt8uIOjFhC0uBuQAADJYEABOVfAAAABAAAAAEAAAAAAAAAAAAAAABo0rExAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABq4P5a+MLZ/WiVyampwIfs6crA21Ih8/p1VIFkMe4clcAAAAMY2hhbmdlX293bmVyAAAAAQAAABIAAAAAAAAAAPqS9Q/j4wXhAhrzZpNIu33tjelksUUC2T/fWnuxWO1pAAAAAQAAAAEAAAAAAAAAAPqS9Q/j4wXhAhrzZpNIu33tjelksUUC2T/fWnuxWO1pBztbQQm6H94AAAAAAAAAAQAAAAAAAAABq4P5a+MLZ/WiVyampwIfs6crA21Ih8/p1VIFkMe4clcAAAAMY2hhbmdlX293bmVyAAAAAQAAABIAAAAAAAAAAPqS9Q/j4wXhAhrzZpNIu33tjelksUUC2T/fWnuxWO1pAAAAAAAAAAEAAAAAAAAAAgAAAAAAAAAA+pL1D+PjBeECGvNmk0i7fe2N6WSxRQLZP99ae7FY7WkAAAAHDOxN+5wG3QW5dPtODYSdkZ7trvqVPuHZRWiNsaFO32EAAAACAAAABgAAAAAAAAAA+pL1D+PjBeECGvNmk0i7fe2N6WSxRQLZP99ae7FY7WkAAAAVBztbQQm6H94AAAAAAAAABgAAAAGrg/lr4wtn9aJXJqanAh+zpysDbUiHz+nVUgWQx7hyVwAAABQAAAABABH2gwAAAJAAAAEcAAAAAAADJR0AAAAA';
 
-      expect(() => {
-        rover.sendTransaction(invalidTxXdr);
-      }).toThrow();
+      await expect(async () => {
+        await server.sendTransaction(
+          TransactionBuilder.fromXDR(
+            invalidTxXdr,
+            await server.getNetwork().then((n) => n.passphrase),
+          ),
+        );
+      }).rejects.toThrow();
     });
 
-    it('xxx', () => {
-      console.dir(rover.getLedgerInfo());
+    it('should return network information', async () => {
+      const networkInfo = await server.getNetwork();
+
+      expect(networkInfo).toHaveProperty('passphrase');
+      expect(networkInfo).toHaveProperty('protocolVersion');
     });
 
-    it('should return network information', () => {
-      const networkInfo = rover.getNetworkInfo();
-      const parsedInfo = JSON.parse(networkInfo);
+    it('should set time and ledger', () => {
+      marsRover.setTime(1200);
+      marsRover.setSequence(1301);
 
-      expect(parsedInfo).toHaveProperty('passphrase');
-      expect(parsedInfo).toHaveProperty('protocolVersion');
+      const info = getLedgerInfo(marsRover);
+
+      expect(info.sequence_number).toBe(1301);
+      expect(info.timestamp).toBe(1200);
     });
 
-    it('should fund account and retrieve balance', () => {
-      const { accountKey } = createFundedAccount(1000);
-      const balance = Number(rover.getBalance(accountKey));
+    it('should fund account and retrieve balance', async () => {
+      const keypair = createFundedAccount(1000);
+      const balance = marsRover.getBalance(keypair.xdrPublicKey().toXDR('base64'));
 
-      expect(balance).toBe(1000);
+      expect(Number(balance)).toBe(1000);
     });
 
-    it('should fund account and retrieve account details', () => {
-      const { accountKey } = createFundedAccount(1000);
-      const accountInfo = rover.getAccount(accountKey);
-      const parsedAccount = JSON.parse(accountInfo);
+    it('should fund account and retrieve account details', async () => {
+      const keypair = createFundedAccount(1000);
+      const account = await server.getAccount(keypair.xdrPublicKey().toXDR('base64'));
 
-      expect(parsedAccount).toHaveProperty('account_id');
-      expect(parsedAccount).toHaveProperty('seq_num');
-      expect(parsedAccount.balance).toBe('1000');
+      expect(account.accountId()).toBe(keypair.publicKey());
+      expect(account.sequenceNumber()).toBe('0');
     });
   });
 
@@ -101,118 +112,101 @@ describe('MarsRover Stellar Sandbox', () => {
     });
 
     it('should deploy contract and execute operations', async () => {
-      const { keypair: ownerKeypair, accountKey: ownerAccountKey } = createFundedAccount();
-      const { keypair: userKeypair, accountKey: userAccountKey } = createFundedAccount();
+      const ownerKeypair = createFundedAccount();
+      const userKeypair = createFundedAccount();
 
-      const getOwnerAccount = getAccountProvider(ownerAccountKey);
-      const getUserAccount = getAccountProvider(userAccountKey);
-
-      const uploadTx = await rpc.transactionFromOperation(
+      const uploadTx = await buildTransaction(
         Operation.uploadContractWasm({ wasm: contractWasm }),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        ownerKeypair,
       );
 
-      const uploadResult = executeTransaction(uploadTx, ownerKeypair);
-      const wasmHashScVal = decodeScVal(uploadResult);
-      const wasmHash = wasmHashScVal.bytes();
+      const uploadResult = await executeTransaction(uploadTx, ownerKeypair);
+      const wasmHash = uploadResult.bytes();
 
       expect(wasmHash).toBeInstanceOf(Buffer);
-      expect(wasmHash.length).toBe(32);
+      expect(wasmHash?.length).toBe(32);
 
-      const createContractTx = await rpc.transactionFromOperation(
+      const createContractTx = await buildTransaction(
         Operation.createCustomContract({
-          wasmHash,
+          wasmHash: wasmHash!,
           address: Address.fromString(ownerKeypair.publicKey()),
         }),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        ownerKeypair,
       );
 
-      const createResult = executeTransaction(createContractTx, ownerKeypair);
-      const contractAddressScVal = decodeScVal(createResult);
-      const contractAddress = Address.fromScVal(contractAddressScVal);
+      const createResult = await executeTransaction(createContractTx, ownerKeypair);
+      const contractAddress = Address.fromScVal(createResult!);
       const contract = new Contract(contractAddress.toString());
 
       expect(contractAddress.toString()).toMatch(/^C[A-Z0-9]{55}$/);
 
-      const initTx = await rpc.transactionFromOperation(
-        contract.call('init', xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress())),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+      const initTx = await buildTransaction(
+        contract.call(
+          'init',
+          xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress()),
+        ),
+        ownerKeypair,
       );
 
-      executeTransaction(initTx, ownerKeypair);
+      await executeTransaction(initTx, ownerKeypair);
 
-      const changeOwnerTx = await rpc.transactionFromOperation(
-        contract.call('change_owner', xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress())),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+      const changeOwnerTx = await buildTransaction(
+        contract.call(
+          'change_owner',
+          xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress()),
+        ),
+        ownerKeypair,
       );
 
-      executeTransaction(changeOwnerTx, ownerKeypair);
+      await executeTransaction(changeOwnerTx, ownerKeypair);
 
-      const unauthorizedChangeOwnerTx = await rpc.transactionFromOperation(
-        contract.call('change_owner', xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress())),
-        getUserAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+      const unauthorizedChangeOwnerTx = await buildTransaction(
+        contract.call(
+          'change_owner',
+          xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress()),
+        ),
+        userKeypair,
       );
 
-      expect(() => {
-        executeTransaction(unauthorizedChangeOwnerTx, userKeypair);
-      }).toThrow();
+      await expect(async () => {
+        await executeTransaction(unauthorizedChangeOwnerTx, userKeypair);
+      }).rejects.toThrow();
     });
 
     it('should handle contract deployment with proper WASM hash format', async () => {
-      const { keypair, accountKey } = createFundedAccount();
-      const getAccount = getAccountProvider(accountKey);
+      const keypair = createFundedAccount();
 
-      const uploadTx = await rpc.transactionFromOperation(
+      const uploadTx = await buildTransaction(
         Operation.uploadContractWasm({ wasm: contractWasm }),
-        getAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        keypair,
       );
 
-      const result = executeTransaction(uploadTx, keypair);
-      const wasmHashScVal = decodeScVal(result);
+      const wasmHashScVal = await executeTransaction(uploadTx, keypair);
 
       expect(wasmHashScVal.switch()).toBe(xdr.ScValType.scvBytes());
       expect(wasmHashScVal.bytes().length).toBe(32);
     });
 
     it('should handle contract address creation properly', async () => {
-      const { keypair, accountKey } = createFundedAccount();
-      const getAccount = getAccountProvider(accountKey);
+      const keypair = createFundedAccount();
 
-      const uploadTx = await rpc.transactionFromOperation(
+      const uploadTx = await buildTransaction(
         Operation.uploadContractWasm({ wasm: contractWasm }),
-        getAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        keypair,
       );
 
-      const uploadResult = executeTransaction(uploadTx, keypair);
-      const wasmHashScVal = decodeScVal(uploadResult);
+      const wasmHashScVal = await executeTransaction(uploadTx, keypair);
       const wasmHash = wasmHashScVal.bytes();
 
-      const createTx = await rpc.transactionFromOperation(
+      const createTx = await buildTransaction(
         Operation.createCustomContract({
           wasmHash,
           address: Address.fromString(keypair.publicKey()),
         }),
-        getAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        keypair,
       );
 
-      const createResult = executeTransaction(createTx, keypair);
-      const contractAddressScVal = decodeScVal(createResult);
+      const contractAddressScVal = await executeTransaction(createTx, keypair);
 
       expect(contractAddressScVal.switch()).toBe(xdr.ScValType.scvAddress());
 
@@ -220,133 +214,125 @@ describe('MarsRover Stellar Sandbox', () => {
       expect(contractAddress.toString()).toMatch(/^C[A-Z0-9]{55}$/);
     });
 
-    it('should fail when simulating non-existing contract function', async () => {
-      const { keypair: ownerKeypair, accountKey: ownerAccountKey } = createFundedAccount();
-      const getOwnerAccount = getAccountProvider(ownerAccountKey);
+    it('should fail when calling non-existing contract function', async () => {
+      const ownerKeypair = createFundedAccount();
 
-      const uploadTx = await rpc.transactionFromOperation(
+      const uploadTx = await buildTransaction(
         Operation.uploadContractWasm({ wasm: contractWasm }),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        ownerKeypair,
       );
 
-      const uploadResult = executeTransaction(uploadTx, ownerKeypair);
-      const wasmHashScVal = decodeScVal(uploadResult);
+      const wasmHashScVal = await executeTransaction(uploadTx, ownerKeypair);
       const wasmHash = wasmHashScVal.bytes();
 
-      const createContractTx = await rpc.transactionFromOperation(
+      const createContractTx = await buildTransaction(
         Operation.createCustomContract({
           wasmHash,
           address: Address.fromString(ownerKeypair.publicKey()),
         }),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        ownerKeypair,
       );
 
-      const createResult = executeTransaction(createContractTx, ownerKeypair);
-      const contractAddressScVal = decodeScVal(createResult);
+      const contractAddressScVal = await executeTransaction(createContractTx, ownerKeypair);
       const contractAddress = Address.fromScVal(contractAddressScVal);
       const contract = new Contract(contractAddress.toString());
 
-      const initTx = await rpc.transactionFromOperation(
-        contract.call('init', xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress())),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+      const initTx = await buildTransaction(
+        contract.call(
+          'init',
+          xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress()),
+        ),
+        ownerKeypair,
       );
 
-      executeTransaction(initTx, ownerKeypair);
+      await executeTransaction(initTx, ownerKeypair);
 
-      expect(async () => {
-        await rpc.transactionFromOperation(
+      await expect(async () => {
+        await buildTransaction(
           contract.call('nonExistentFunction', xdr.ScVal.scvString('test')),
-          getOwnerAccount,
-          simulateTransaction,
-          rover.networkPassphrase(),
+          ownerKeypair,
         );
-      }).toThrow();
+      }).rejects.toThrow();
     });
   });
 
   describe('Error Handling', () => {
     it('should handle invalid account keys', () => {
       expect(() => {
-        rover.fundAccount('invalid-key', 1000);
+        marsRover.fundAccount('invalid-key', 1000);
       }).toThrow();
     });
 
-    it('should handle requests for non-existent accounts', () => {
+    it('should handle requests for non-existent accounts', async () => {
       const randomKey = Keypair.random().xdrPublicKey().toXDR('base64');
 
-      expect(() => {
-        rover.getBalance(randomKey);
-      }).toThrow();
+      await expect(async () => {
+        await server.getAccount(randomKey);
+      }).rejects.toThrow();
     });
 
-    it('should handle malformed transaction XDR', () => {
-      expect(() => {
-        rover.sendTransaction('invalid-xdr');
-      }).toThrow();
+    it('should handle malformed transaction XDR', async () => {
+      await expect(async () => {
+        const account = await server.getAccount(
+          createFundedAccount().xdrPublicKey().toXDR('base64'),
+        );
+        const networkInfo = await server.getNetwork();
+        const malformedTx = new TransactionBuilder(account, {
+          fee: '1000000',
+          networkPassphrase: networkInfo.passphrase,
+        }).build();
+
+        await server.sendTransaction(malformedTx);
+      }).rejects.toThrow();
     });
   });
 
   describe('Authorization', () => {
-    it.only('should reject unauthorized operations', async () => {
-      const { keypair: ownerKeypair, accountKey: ownerAccountKey } = createFundedAccount();
-      const { keypair: unauthorizedKeypair, accountKey: unauthorizedAccountKey } = createFundedAccount();
+    it('should reject unauthorized operations', async () => {
+      const ownerKeypair = createFundedAccount();
+      const unauthorizedKeypair = createFundedAccount();
 
-      const getOwnerAccount = getAccountProvider(ownerAccountKey);
-      const getUnauthorizedAccount = getAccountProvider(unauthorizedAccountKey);
-
-      const uploadTx = await rpc.transactionFromOperation(
+      const uploadTx = await buildTransaction(
         Operation.uploadContractWasm({ wasm: readFileSync('./test/redstone_adapter.wasm') }),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        ownerKeypair,
       );
 
-      const uploadResult = executeTransaction(uploadTx, ownerKeypair);
-      const wasmHashScVal = decodeScVal(uploadResult);
+      const wasmHashScVal = await executeTransaction(uploadTx, ownerKeypair);
       const wasmHash = wasmHashScVal.bytes();
 
-      const createTx = await rpc.transactionFromOperation(
+      const createTx = await buildTransaction(
         Operation.createCustomContract({
           wasmHash,
           address: Address.fromString(ownerKeypair.publicKey()),
         }),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+        ownerKeypair,
       );
 
-      const createResult = executeTransaction(createTx, ownerKeypair);
-      const contractAddressScVal = decodeScVal(createResult);
+      const contractAddressScVal = await executeTransaction(createTx, ownerKeypair);
       const contractAddress = Address.fromScVal(contractAddressScVal);
       const contract = new Contract(contractAddress.toString());
 
-      const initTx = await rpc.transactionFromOperation(
-        contract.call('init', xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress())),
-        getOwnerAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+      const initTx = await buildTransaction(
+        contract.call(
+          'init',
+          xdr.ScVal.scvAddress(new Address(ownerKeypair.publicKey()).toScAddress()),
+        ),
+        ownerKeypair,
       );
 
-      executeTransaction(initTx, ownerKeypair);
+      await executeTransaction(initTx, ownerKeypair);
 
-      const unauthorizedTx = await rpc.transactionFromOperation(
-        contract.call('change_owner', xdr.ScVal.scvAddress(new Address(unauthorizedKeypair.publicKey()).toScAddress())),
-        getUnauthorizedAccount,
-        simulateTransaction,
-        rover.networkPassphrase(),
+      const unauthorizedTx = await buildTransaction(
+        contract.call(
+          'change_owner',
+          xdr.ScVal.scvAddress(new Address(unauthorizedKeypair.publicKey()).toScAddress()),
+        ),
+        unauthorizedKeypair,
       );
 
-      executeTransaction(unauthorizedTx, unauthorizedKeypair);
-
-      expect(() => {
-        executeTransaction(unauthorizedTx, unauthorizedKeypair);
-      }).toThrow();
+      await expect(async () => {
+        await executeTransaction(unauthorizedTx, unauthorizedKeypair);
+      }).rejects.toThrow();
     });
   });
 });

@@ -9,8 +9,9 @@ export declare class MarsRover {
   getAccount(account: string): string;
   getBalance(account: string): string;
   simulateTx(transactionEnvelope: string): string;
-  sendTransaction(transactionEnvelope: string): Array<number>;
+  sendTransaction(transactionEnvelope: string): string;
   networkPassphrase(): string;
   getNetworkInfo(): string;
   getContractData(contractAddress: string, key: string, durability: string): string;
+  getTransaction(hash: string): string;
 }

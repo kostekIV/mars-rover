@@ -1,24 +1,21 @@
 use std::{collections::HashSet, rc::Rc};
 
-use anyhow::{Context, Result};
-use sha2::{Digest, Sha256};
-use soroban_env_common::xdr::{ContractCostParamEntry, ExtensionPoint};
+use anyhow::{ensure, Context, Result};
 use soroban_env_host::{
-    budget::{AsBudget, Budget},
+    budget::Budget,
     e2e_invoke::{self, InvokeHostFunctionResult, LedgerEntryChange, RecordingInvocationAuthMode},
     storage::SnapshotSource,
-    vm::VersionedContractCodeCostInputs,
     xdr::{
-        AccountId, ContractCodeEntryExt, ContractCostParams, ContractCostType, Hash, HostFunction,
-        LedgerEntry, LedgerEntryChangeType, LedgerEntryData, LedgerKey, LedgerKeyContractCode,
-        LedgerKeyContractData, Limits, OperationBody, ReadXdr, SorobanAuthorizationEntry,
-        SorobanResources, SorobanTransactionDataExt, TransactionExt, TransactionV1Envelope,
-        TtlEntry, WriteXdr,
+        AccountId, ContractCostParamEntry, ContractCostParams, ContractEvent, DiagnosticEvent,
+        ExtensionPoint, HostFunction, LedgerEntry, LedgerEntryData, LedgerKey,
+        LedgerKeyContractCode, LedgerKeyContractData, Limits, OperationBody, ReadXdr,
+        SorobanAuthorizationEntry, SorobanResources, SorobanTransactionDataExt, TransactionExt,
+        TransactionResultResult, TransactionV1Envelope, WriteXdr,
     },
-    HostError, LedgerInfo, ModuleCache,
+    HostError, LedgerInfo,
 };
 use soroban_simulation::simulation::{
-    simulate_invoke_host_function_op, LedgerEntryDiff, SimulationAdjustmentConfig,
+    simulate_invoke_host_function_op, SimulationAdjustmentConfig,
 };
 
 use crate::{
@@ -27,94 +24,15 @@ use crate::{
         SimulateHostFunctionResult, SimulateTransactionErrorResponse, SimulateTransactionResponse,
         SimulateTransactionSuccessResponse,
     },
-    module_cache::new_module_cache,
     network_config::default_network_config,
+    utils::{build_module_cache_for_entries, changes_from_simulation, failed_result, ttl_entry},
 };
 
-fn compute_key_hash(key: &LedgerKey) -> Vec<u8> {
-    let key_xdr = key.to_xdr(Limits::none()).unwrap();
-    let hash: [u8; 32] = Sha256::digest(&key_xdr).into();
-    hash.to_vec()
-}
-
-pub fn sha256_hash_from_bytes_raw(bytes: &[u8], budget: impl AsBudget) -> Result<[u8; 32]> {
-    budget
-        .as_budget()
-        .charge(
-            ContractCostType::ComputeSha256Hash,
-            Some(bytes.len() as u64),
-        )
-        .context("Failed to charge budget for SHA256 hash")?;
-    Ok(Sha256::digest(bytes).into())
-}
-
-fn ttl_entry(key: &LedgerKey, ttl: u32) -> TtlEntry {
-    TtlEntry {
-        key_hash: compute_key_hash(key).try_into().unwrap(),
-        live_until_ledger_seq: ttl,
-    }
-}
-
-fn build_module_cache_for_entries(
-    ledger_info: &LedgerInfo,
-    ledger_entries_with_ttl: Vec<(LedgerEntry, Option<u32>)>,
-    restored_contracts: &HashSet<Hash>,
-) -> Result<ModuleCache> {
-    let (cache, ctx) = new_module_cache().context("Failed to create new module cache")?;
-
-    for (e, _) in ledger_entries_with_ttl.iter() {
-        if let LedgerEntryData::ContractCode(cd) = &e.data {
-            let contract_id = Hash(sha256_hash_from_bytes_raw(&cd.code, ctx.as_budget())?);
-            if restored_contracts.contains(&contract_id) {
-                continue;
-            }
-            let code_cost_inputs = match &cd.ext {
-                ContractCodeEntryExt::V0 => VersionedContractCodeCostInputs::V0 {
-                    wasm_bytes: cd.code.len(),
-                },
-                ContractCodeEntryExt::V1(v1) => {
-                    VersionedContractCodeCostInputs::V1(v1.cost_inputs.clone())
-                },
-            };
-            cache
-                .parse_and_cache_module(
-                    &ctx,
-                    ledger_info.protocol_version,
-                    &contract_id,
-                    &cd.code,
-                    code_cost_inputs,
-                )
-                .context("Failed to parse and cache module")?;
-        }
-    }
-    Ok(cache)
-}
-
-fn changes_from_simulation(changes: Vec<LedgerEntryDiff>) -> Vec<crate::model::LedgerEntryChange> {
-    changes
-        .into_iter()
-        .map(|diff| {
-            let change_type = match (diff.state_before.is_some(), diff.state_after.is_some()) {
-                (true, true) => LedgerEntryChangeType::Updated,
-                (true, false) => LedgerEntryChangeType::Removed,
-                (false, true) => LedgerEntryChangeType::Updated,
-                _ => panic!("unexpected"),
-            };
-
-            let key = match (&diff.state_after, &diff.state_before) {
-                (Some(entry), _) => entry.to_key(),
-                (_, Some(entry)) => entry.to_key(),
-                _ => panic!("unexpected"),
-            };
-
-            crate::model::LedgerEntryChange {
-                change_type,
-                key,
-                before: diff.state_before,
-                after: diff.state_after,
-            }
-        })
-        .collect()
+pub struct ExecutionResult {
+    pub error: Option<TransactionResultResult>,
+    pub fee_charges: i64,
+    pub result: Result<Vec<u8>, HostError>,
+    pub events: Vec<DiagnosticEvent>,
 }
 
 pub struct Executor {
@@ -196,7 +114,12 @@ impl Executor {
         &self,
         transaction_envelope: &TransactionV1Envelope,
         ledger_info: &LedgerInfo,
-    ) -> Result<Result<Vec<u8>, HostError>> {
+    ) -> Result<ExecutionResult> {
+        ensure!(
+            transaction_envelope.tx.operations.len() == 1,
+            "Only single operation is supported"
+        );
+
         let host_function_op = match &transaction_envelope.tx.operations[0].body {
             OperationBody::InvokeHostFunction(host) => host,
             _ => return Err(anyhow::anyhow!("Expected InvokeHostFunction operation")),
@@ -227,15 +150,36 @@ impl Executor {
 
         self.apply_ledger_changes(result.ledger_changes)?;
 
-        Ok(result.encoded_invoke_result)
+        let error = result
+            .encoded_invoke_result
+            .is_err()
+            .then_some(failed_result()?);
+        let out = result.encoded_invoke_result.clone();
+
+        let events = result
+            .encoded_contract_events
+            .iter()
+            .map(|encoded| ContractEvent::from_xdr(encoded, Limits::none()).unwrap())
+            .map(|e| DiagnosticEvent {
+                in_successful_contract_call: error.is_none(),
+                event: e,
+            })
+            .collect();
+
+        let result = ExecutionResult {
+            error,
+            fee_charges: transaction_envelope.tx.fee as i64,
+            result: out,
+            events,
+        };
+
+        Ok(result)
     }
 
     pub fn apply_ledger_changes(&self, changes: Vec<LedgerEntryChange>) -> Result<()> {
         for change in changes {
             let key = LedgerKey::from_xdr(change.encoded_key, Limits::none())
                 .context("Failed to decode ledger key from XDR")?;
-
-            println!("--------------{key:?}---------------");
 
             let ttl = change.ttl_change.map(|ttl| ttl.new_live_until_ledger);
 
@@ -257,6 +201,7 @@ impl Executor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn invoke_host_function(
         &self,
         host_fn: &HostFunction,
@@ -346,10 +291,10 @@ impl Executor {
 
         let mut restored_contracts = HashSet::new();
         for index in restored_entry_indices {
-            if let Some(key) = resources.footprint.read_write.get(*index as usize) {
-                if let LedgerKey::ContractCode(code) = key {
-                    restored_contracts.insert(code.hash.clone());
-                }
+            if let Some(LedgerKey::ContractCode(code)) =
+                resources.footprint.read_write.get(*index as usize)
+            {
+                restored_contracts.insert(code.hash.clone());
             }
         }
 
@@ -359,7 +304,7 @@ impl Executor {
             .collect();
 
         let module_cache = build_module_cache_for_entries(
-            &ledger_info,
+            ledger_info,
             ledger_entries_for_cache,
             &restored_contracts,
         )?;

@@ -9,9 +9,11 @@ use soroban_env_host::{
     HostError,
 };
 
+type StorageMap = BTreeMap<Rc<LedgerKey>, EntryWithLiveUntil>;
+
 #[derive(Default, Clone)]
 pub struct Memory {
-    memory: RefCell<BTreeMap<Rc<LedgerKey>, (Rc<LedgerEntry>, Option<u32>)>>,
+    memory: RefCell<StorageMap>,
 }
 
 impl fmt::Debug for Memory {
