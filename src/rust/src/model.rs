@@ -54,7 +54,7 @@ pub struct LedgerEntryChange {
 #[derive(Serialize, Deserialize)]
 pub struct SimulateHostFunctionResult {
     pub auth: Vec<String>,
-    pub retval: ScVal,
+    pub retval: String,
 }
 
 #[derive(Serialize)]

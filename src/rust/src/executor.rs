@@ -93,7 +93,7 @@ impl Executor {
             min_resource_fee: tx_data.resource_fee.to_string(),
             parsed: true,
             result: Some(SimulateHostFunctionResult {
-                retval: simulation.invoke_result?,
+                retval: simulation.invoke_result?.to_xdr_base64(Limits::none())?,
                 auth: simulation
                     .auth
                     .into_iter()

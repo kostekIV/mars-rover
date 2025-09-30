@@ -44,10 +44,10 @@ export class SandboxServer extends rpc.Server {
     simulation.transactionData = new SorobanDataBuilder(
       xdr.SorobanTransactionData.fromXDR(simulation.transactionData, 'base64'),
     );
-
     simulation.result.auth = simulation.result.auth.map((authEntry: string) =>
       xdr.SorobanAuthorizationEntry.fromXDR(authEntry, 'base64'),
     );
+    simulation.result.retval = xdr.ScVal.fromXDR(simulation.result.retval, 'base64');
 
     return simulation;
   }
