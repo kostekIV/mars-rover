@@ -3,7 +3,6 @@ use serde_with::serde_as;
 use soroban_env_common::xdr::{TransactionEvent, TransactionResult};
 use soroban_env_host::xdr::{
     ContractEvent, DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerKey,
-    ScVal,
 };
 
 #[derive(Serialize, Deserialize)]
