@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use soroban_env_common::xdr::{TransactionEvent, TransactionResult};
 use soroban_env_host::xdr::{
-    ContractEvent, DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerEntryData, LedgerKey,
-    ScVal,
+    ContractEvent, DiagnosticEvent, LedgerEntry, LedgerEntryChangeType, LedgerKey,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -54,7 +53,7 @@ pub struct LedgerEntryChange {
 #[derive(Serialize, Deserialize)]
 pub struct SimulateHostFunctionResult {
     pub auth: Vec<String>,
-    pub retval: ScVal,
+    pub retval: String,
 }
 
 #[derive(Serialize)]
@@ -62,8 +61,8 @@ pub struct SimulateHostFunctionResult {
 pub struct LedgerEntryResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_modified_ledger_seq: Option<u32>,
-    pub key: LedgerKey,
-    pub data: LedgerEntryData,
+    pub key: String,
+    pub val: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_until_ledger_seq: Option<u32>,
 }

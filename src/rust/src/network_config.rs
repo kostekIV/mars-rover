@@ -7,8 +7,8 @@ use soroban_env_host::{
         ConfigSettingContractBandwidthV0, ConfigSettingContractComputeV0,
         ConfigSettingContractEventsV0, ConfigSettingContractHistoricalDataV0,
         ConfigSettingContractLedgerCostExtV0, ConfigSettingContractLedgerCostV0,
-        ConfigSettingEntry, ContractCostParamEntry, ContractCostParams, ContractCostType,
-        ExtensionPoint, LedgerEntry, LedgerEntryData, StateArchivalSettings,
+        ConfigSettingEntry, ContractCostParamEntry, ContractCostParams, ExtensionPoint,
+        LedgerEntry, LedgerEntryData, StateArchivalSettings,
     },
 };
 use soroban_simulation::NetworkConfig;
@@ -18,24 +18,46 @@ use crate::{ledger_info::get_initial_ledger_info, memory::Memory};
 fn _config_entry(entry: ConfigSettingEntry) -> (LedgerEntry, Option<u32>) {
     (ledger_entry(LedgerEntryData::ConfigSetting(entry)), None)
 }
-pub fn default_network_config() -> NetworkConfig {
-    let default_entry = ContractCostParamEntry {
-        ext: ExtensionPoint::V0,
-        const_term: 0,
-        linear_term: 0,
-    };
-    let mut cpu_cost_params = vec![default_entry.clone(); ContractCostType::variants().len()];
-    let mut mem_cost_params = vec![default_entry; ContractCostType::variants().len()];
-    for i in 0..ContractCostType::variants().len() {
-        let v = i as i64;
-        cpu_cost_params[i].const_term = (v + 1) * 1000;
-        cpu_cost_params[i].linear_term = v << 7;
-        mem_cost_params[i].const_term = (v + 1) * 500;
-        mem_cost_params[i].linear_term = v << 6;
-    }
+pub fn default_network_config() -> anyhow::Result<NetworkConfig> {
+    let cpu_cost_params = ContractCostParams(
+        vec![
+            ContractCostParamEntry {
+                ext: ExtensionPoint::V0,
+                const_term: 35,
+                linear_term: 36,
+            },
+            ContractCostParamEntry {
+                ext: ExtensionPoint::V0,
+                const_term: 37,
+                linear_term: 38,
+            },
+        ]
+        .try_into()?,
+    );
+    let mem_cost_params = ContractCostParams(
+        vec![
+            ContractCostParamEntry {
+                ext: ExtensionPoint::V0,
+                const_term: 39,
+                linear_term: 40,
+            },
+            ContractCostParamEntry {
+                ext: ExtensionPoint::V0,
+                const_term: 41,
+                linear_term: 42,
+            },
+            ContractCostParamEntry {
+                ext: ExtensionPoint::V0,
+                const_term: 43,
+                linear_term: 44,
+            },
+        ]
+        .try_into()?,
+    );
+
     let ledger_info = get_initial_ledger_info();
 
-    NetworkConfig {
+    Ok(NetworkConfig {
         fee_configuration: FeeConfiguration {
             fee_per_instruction_increment: 10,
             fee_per_disk_read_entry: 20,
@@ -55,12 +77,12 @@ pub fn default_network_config() -> NetworkConfig {
         },
         tx_max_instructions: 100_000_000,
         tx_memory_limit: 40_000_000,
-        cpu_cost_params: ContractCostParams(cpu_cost_params.try_into().unwrap()),
-        memory_cost_params: ContractCostParams(mem_cost_params.try_into().unwrap()),
+        cpu_cost_params: ContractCostParams(cpu_cost_params.into()),
+        memory_cost_params: ContractCostParams(mem_cost_params.into()),
         min_temp_entry_ttl: ledger_info.min_temp_entry_ttl,
         min_persistent_entry_ttl: ledger_info.min_persistent_entry_ttl,
         max_entry_ttl: ledger_info.max_entry_ttl,
-    }
+    })
 }
 
 pub fn _populate_memory_with_config_entries(memory: Rc<Memory>) {

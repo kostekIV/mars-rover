@@ -272,8 +272,8 @@ impl Sandbox {
 
         Ok(LedgerEntryResult {
             last_modified_ledger_seq: Some(entry.last_modified_ledger_seq),
-            key,
-            data: entry.data.clone(),
+            key: key.to_xdr_base64(Limits::none())?,
+            val: entry.data.to_xdr_base64(Limits::none())?,
             live_until_ledger_seq: ttl,
         })
     }

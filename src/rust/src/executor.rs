@@ -54,7 +54,7 @@ impl Executor {
             _ => return Err(anyhow::anyhow!("Expected InvokeHostFunction operation")),
         };
 
-        let network_config = default_network_config();
+        let network_config = default_network_config()?;
         let simulation = simulate_invoke_host_function_op(
             self.memory.clone(),
             &network_config,
@@ -93,7 +93,7 @@ impl Executor {
             min_resource_fee: tx_data.resource_fee.to_string(),
             parsed: true,
             result: Some(SimulateHostFunctionResult {
-                retval: simulation.invoke_result?,
+                retval: simulation.invoke_result?.to_xdr_base64(Limits::none())?,
                 auth: simulation
                     .auth
                     .into_iter()

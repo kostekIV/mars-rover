@@ -7,6 +7,7 @@ import {
   Transaction,
   xdr,
   rpc,
+  Keypair,
 } from '@stellar/stellar-sdk';
 import { SorobanDataBuilder } from '@stellar/stellar-base';
 
@@ -16,8 +17,10 @@ export class SandboxServer extends rpc.Server {
   }
 
   override getAccount(address: string): Promise<Account> {
+    const accountBs64 = Keypair.fromPublicKey(address).xdrPublicKey().toXDR('base64');
+
     const accountData: { account_id: string; seq_num: string } = JSON.parse(
-      this.sandbox.getAccount(address),
+      this.sandbox.getAccount(accountBs64),
     );
 
     return Promise.resolve(new Account(accountData.account_id, accountData.seq_num));
@@ -41,10 +44,10 @@ export class SandboxServer extends rpc.Server {
     simulation.transactionData = new SorobanDataBuilder(
       xdr.SorobanTransactionData.fromXDR(simulation.transactionData, 'base64'),
     );
-
     simulation.result.auth = simulation.result.auth.map((authEntry: string) =>
       xdr.SorobanAuthorizationEntry.fromXDR(authEntry, 'base64'),
     );
+    simulation.result.retval = xdr.ScVal.fromXDR(simulation.result.retval, 'base64');
 
     return simulation;
   }
@@ -70,7 +73,12 @@ export class SandboxServer extends rpc.Server {
       durability,
     );
 
-    return await Promise.resolve(JSON.parse(responseJson));
+    const response = JSON.parse(responseJson);
+
+    response.key = xdr.LedgerKey.fromXDR(response.key, 'base64');
+    response.val = xdr.LedgerEntryData.fromXDR(response.val, 'base64');
+
+    return await Promise.resolve(response);
   }
 
   override sendTransaction(

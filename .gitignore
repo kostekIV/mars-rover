@@ -121,6 +121,8 @@ dist
 Cargo.lock
 
 *.node
+!mars-rover.darwin-arm64.node
+!mars-rover.linux-x64-gnu.node
 !./npm-packages/**.node
 
 .pnp.*
@@ -133,3 +135,4 @@ Cargo.lock
 /npm
 
 **/.DS_Store
+.idea
